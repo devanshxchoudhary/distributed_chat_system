@@ -1,304 +1,74 @@
-# Distributed Chat System
+# Distributed Chat (Python 3.12, asyncio)
 
-A fault-tolerant, multi-node distributed chat application built with Python. The system uses leader election, replicated logs, quorum-based commitment, and dynamic cluster membership to maintain consistent message ordering across multiple nodes.
+Three independent server nodes (own process, port, SQLite file) that discover each other, elect a
+leader and deliver chat messages in one agreed order using a **hand-written Raft-style replicated
+log**. Clients connect over WebSocket (Textual terminal UI) and can reconnect to any node and catch up.
 
-The project demonstrates fundamental distributed systems concepts through a working chat application that can run across multiple processes and physical machines, including Windows and macOS.
+Docs: [protocol](docs/protocol.md) | [architecture](docs/architecture.md) | [testing](docs/testing.md) |
+[demo script](docs/demo-script.md) | [requirements map](docs/requirements.md)
 
-## Key Features
+## 1. Install (every machine)
 
-- **Leader Election:** Automatically elects a cluster leader using randomized election timeouts and voting.
-- **Message Replication:** Replicates chat messages across distributed nodes.
-- **Quorum-Based Consensus:** Commits messages only after they are durably stored by a majority of voters.
-- **Fault Tolerance:** Automatically elects a new leader when the current leader crashes.
-- **Message Ordering:** Maintains consistent, sequential message delivery across connected clients.
-- **Dynamic Membership:** Supports joining new nodes as learners and promoting them to voting members.
-- **Persistent Storage:** Uses SQLite databases to maintain individual node logs and recover after restarts.
-- **Client Reconnection:** Supports multiple WebSocket server endpoints for reconnecting through available nodes.
-- **Cross-Platform Support:** Runs on Windows and macOS.
-
-## Architecture
-
-The system consists of three main components:
-
-1. **Distributed Nodes:** Independent node processes responsible for elections, replication, and maintaining the cluster.
-2. **Chat Clients:** Users connect through WebSocket endpoints to send and receive messages.
-3. **Persistent Storage:** Each node maintains its own SQLite database containing its local replicated state.
-
-### Message Flow
-
-1. A client sends a message to any available node.
-2. The receiving node forwards the message to the current leader if necessary.
-3. The leader replicates the message to the other nodes.
-4. The message is committed after receiving confirmation from a voting majority.
-5. Committed messages are delivered to connected clients in the same order.
-
-### Cluster Configuration
-
-The initial cluster consists of three voting nodes:
-
-| Node | Role | Default TCP Port | WebSocket Port |
-|---|---|---:|---:|
-| Node A | Voter | 9001 | 8001 |
-| Node B | Voter | 9002 | 8002 |
-| Node C | Voter | 9003 | 8003 |
-| Node D | Joining node | 9004 | 8004 |
-
-Node D initially joins as a learner and can subsequently be promoted to a voting member.
-
-## Technology Stack
-
-- **Language:** Python 3.12
-- **Package Management:** uv
-- **Networking:** TCP and WebSockets
-- **Database:** SQLite
-- **Configuration:** TOML
-- **Testing:** pytest
-- **Code Quality:** Ruff and mypy
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.12
-- Git
-- uv package manager
-- Visual Studio Code (recommended)
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/YOUR-USERNAME/distributed-chat.git
-cd distributed-chat
-```
-
-### 2. Install uv
-
-**Windows (PowerShell):**
+Python 3.12 and [uv](https://docs.astral.sh/uv/) are required.
 
 ```powershell
-winget install astral-sh.uv
+# Windows
+winget install astral-sh.uv           # or: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+uv sync                               # creates .venv and uv.lock  -> COMMIT uv.lock, use the same on both laptops
 ```
-
-**macOS (Terminal):**
-
 ```bash
+# macOS / Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source "$HOME/.local/bin/env"
-```
-
-If uv is already installed, skip this step.
-
-### 3. Install dependencies
-
-```bash
-uv python install 3.12
 uv sync
 ```
 
-This installs the required dependencies using the project's `uv.lock` file.
+## 2. Run the tests first
 
-### 4. Run automated tests
-
-```bash
+```
 uv run pytest -q
-```
-
-## Running the Application
-
-### Option 1: Run all three nodes on one machine
-
-First, configure the node addresses in:
-
-- `config/node-a.toml`
-- `config/node-b.toml`
-- `config/node-c.toml`
-- `config/node-d.toml`
-
-For a local setup, use `127.0.0.1` for the advertised addresses and seeds.
-
-Start each node in a separate terminal.
-
-**macOS:**
-
-```bash
-./scripts/start-node.sh a
-./scripts/start-node.sh b
-./scripts/start-node.sh c
-```
-
-**Windows PowerShell:**
-
-```powershell
-.\scripts\start-node.ps1 a
-.\scripts\start-node.ps1 b
-.\scripts\start-node.ps1 c
-```
-
-Wait for the cluster to elect a leader.
-
-### 5. Start chat clients
-
-Open separate terminal windows for the clients.
-
-**Client Alice:**
-
-```bash
-uv run python -m dchat.client --user alice --server ws://127.0.0.1:8001/ws --server ws://127.0.0.1:8002/ws --server ws://127.0.0.1:8003/ws
-```
-
-**Client Bob:**
-
-```bash
-uv run python -m dchat.client --user bob --server ws://127.0.0.1:8002/ws --server ws://127.0.0.1:8003/ws
-```
-
-Send messages from both clients and verify that they receive the same messages with matching sequential message numbers.
-
-## Running Across Two Machines
-
-The application also supports a distributed deployment across two physical laptops.
-
-Example deployment:
-
-- **Laptop 1:** Node A and Node B.
-- **Laptop 2:** Node C and Node D.
-
-Both machines must be on a network that permits direct communication.
-
-1. Find the Wi-Fi IPv4 address of each laptop.
-2. Update the advertised addresses, seeds, and bootstrap voter configuration in all four TOML files on both machines.
-3. Keep the initial voter configuration identical across Nodes A, B, and C.
-4. Allow TCP ports `9001–9004` and WebSocket ports `8001–8004` through the firewall.
-5. Start Nodes A and B on Laptop 1.
-6. Start Node C on Laptop 2.
-7. Wait for leader election and cluster stabilization.
-8. Connect the chat clients using the actual laptop IP addresses.
-
-**Important:** Never use `127.0.0.1` or `0.0.0.0` as an advertised address when communicating between different machines.
-
-## Fault Tolerance Demonstration
-
-One of the main objectives of this project is to demonstrate how a distributed cluster handles node failures.
-
-### Leader Failure
-
-1. Start the three-node cluster.
-2. Identify the current leader.
-3. Connect Alice and Bob.
-4. Exchange messages and observe their sequence numbers.
-5. Forcefully terminate the current leader.
-
-**macOS:**
-
-```bash
-./scripts/kill-node.sh a
-```
-
-**Windows:**
-
-```powershell
-.\scripts\kill-node.ps1 a
-```
-
-Replace `a` with the actual leader's node identifier.
-
-### Expected Behaviour
-
-- The failed leader stops sending heartbeats.
-- The remaining nodes detect the failure.
-- A new election begins.
-- Another node becomes leader.
-- Clients can continue exchanging messages.
-- The failed node can restart and catch up using its persisted SQLite database.
-
-## Dynamic Node Membership
-
-After Nodes A, B, and C are running and a stable leader has been elected, Node D can join the cluster.
-
-```bash
-./scripts/start-node.sh d
-```
-
-Node D initially joins as a learner.
-
-The leader replicates the existing committed log to Node D. Once it catches up, the leader can promote it to a voting member.
-
-This demonstrates dynamic membership changes without manually adding the new node to the initial bootstrap voter configuration.
-
-## Testing and Code Quality
-
-Run the following commands from the project root.
-
-**Automated tests:**
-
-```bash
-uv run pytest -q
-```
-
-**Linting:**
-
-```bash
-uv run ruff check --fix .
-```
-
-**Formatting:**
-
-```bash
-uv run ruff format .
-```
-
-**Static type checking:**
-
-```bash
+uv run ruff check --fix . && uv run ruff format .    # first run: auto-fixes import ordering/style
 uv run mypy src
 ```
 
-### Test Coverage Areas
+## 3. Two physical machines
 
-The test suite includes:
+1. Put both laptops on the same network (a phone hotspot or a router is safest; university Wi-Fi
+   often isolates clients). Note each laptop's IPv4 address (`ipconfig` / `ifconfig` / `ip addr`).
+2. Edit `config/node-a.toml`, `node-b.toml`, `node-c.toml`, `node-d.toml`: replace `192.168.1.20`
+   (Laptop 1) and `192.168.1.21` (Laptop 2) in `advertise_addr`, `seeds` and `[bootstrap_voters]`.
+   The `bootstrap_voters` table must be identical in a, b, c. `advertise_addr` must be the address the
+   OTHER machine can reach, never `0.0.0.0`. Nodes bind `0.0.0.0`.
+3. Open the firewall once per laptop.
+   - Windows (Administrator PowerShell): `.\scripts\firewall-windows.ps1`
+   - Linux: `sudo ufw allow 9001:9004/tcp && sudo ufw allow 8001:8004/tcp`
+   - macOS: allow incoming connections for Python when the prompt appears.
+4. Start nodes (each in its own terminal):
 
-- Message framing and validation.
-- Log replication and persistent storage.
-- Leader election and quorum handling.
-- Message ordering and deduplication.
-- Cluster membership and learner promotion.
-- Randomized node crashes and restarts.
-- Network partitions and recovery.
-- TCP and SQLite integration.
-- WebSocket client sessions and reconnection.
-- Leader failure and recovery across separate processes.
+   | Windows | macOS / Linux | Machine |
+   |---|---|---|
+   | `.\scripts\start-node.ps1 a` | `./scripts/start-node.sh a` | Laptop 1 |
+   | `.\scripts\start-node.ps1 b` | `./scripts/start-node.sh b` | Laptop 1 |
+   | `.\scripts\start-node.ps1 c` | `./scripts/start-node.sh c` | Laptop 2 |
 
-## Fault Tolerance Limitations
+   Equivalent direct command: `uv run python -m dchat.node --config config/node-a.toml`
+   (`--no-ws` runs headless, `--log-level DEBUG` for more detail).
+5. Check connectivity before blaming the code: from Laptop 1 run
+   `Test-NetConnection 192.168.1.21 -Port 9003` (Windows) or `nc -vz 192.168.1.21 9003` (macOS/Linux).
+6. Start clients: `uv run python -m dchat.client --user alice --server ws://192.168.1.20:8001/ws --server ws://192.168.1.21:8003/ws`
+   (repeat `--server`; the client fails over between them). Type and press Enter; Ctrl+C quits.
+7. Kill / restart a node (the demo's "kill -9"): `.\scripts\kill-node.ps1 a` /
+   `./scripts/kill-node.sh a`, then start it again; it recovers from `data/node-a.db`.
+8. Join a 4th node into the running cluster: `.\scripts\start-node.ps1 d` (config has no voters, only seeds).
 
-The system uses majority-based consensus.
+## Troubleshooting
 
-| Cluster Size | Required Majority | Maximum Node Failures |
-|---|---:|---:|
-| 3 voters | 2 | 1 |
-| 4 voters | 3 | 1 |
+* Nodes never elect a leader: peers cannot reach each other. Re-check IPs in the TOML files, the firewall and `Test-NetConnection`.
+* "startup failed: ... address already in use": another process owns the port; change `tcp_port`/`ws_port`.
+* Laptop IP changed (DHCP): edit the TOML files again, restart nodes.
+* Timer note (Windows): do not set election timeouts below ~150 ms (the config loader rejects it).
+* If uvicorn complains about signal handling after an upgrade: `src/dchat/node/api/ws_server.py` (`_QuietServer`) overrides the two hooks uvicorn has used; check `uv run python -c "import uvicorn; print(uvicorn.__version__)"`.
 
-If a voting majority becomes unavailable, the cluster stops accepting committed writes to preserve consistency.
+## Scope decisions
 
-Current implementation limitations:
-
-- No TLS or authentication.
-- No node removal functionality.
-- No snapshots or log compaction.
-- New or restarted nodes catch up by replaying the replicated log.
-
-## Project Objectives
-
-This project explores practical implementations of distributed systems concepts, including:
-
-- Distributed coordination.
-- Leader election.
-- Consensus and quorum management.
-- Replicated state and log consistency.
-- Fault detection and recovery.
-- Dynamic cluster membership.
-- Network communication.
-- Persistent distributed storage.
-
-## License
-
-Add your preferred open-source license before distributing this project. 
+No snapshots or log compaction (catch-up replays the log), no node removal, no pre-vote, one global
+room, no auth/TLS. See `docs/protocol.md` for the exact guarantees and limits.

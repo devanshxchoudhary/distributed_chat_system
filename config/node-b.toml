@@ -1,0 +1,16 @@
+# Node b. Edit the two LAN IPs below (Laptop 1 runs node-a + node-b, Laptop 2 runs node-c).
+# LAPTOP1 = 127.0.0.1   LAPTOP2 = 127.0.0.1   (find yours: ipconfig / ifconfig / ip addr)
+node_id = "node-b"
+host = "0.0.0.0"              # listen on all interfaces
+tcp_port = 9002                 # server-to-server (Raft) port
+ws_port = 8002                  # client WebSocket port
+advertise_addr = "127.0.0.1:9002"      # address OTHER nodes use to reach this node (never 0.0.0.0)
+db_path = "data/node-b.db"
+heartbeat_ms = 500
+election_timeout_ms = [1500, 3000]
+seeds = ["127.0.0.1:9001", "127.0.0.1:9003"]   # used only by nodes that are not yet members
+
+[bootstrap_voters]            # the initial 3-voter cluster (identical in a, b, c)
+node-a = "127.0.0.1:9001"
+node-b = "127.0.0.1:9002"
+node-c = "127.0.0.1:9003"

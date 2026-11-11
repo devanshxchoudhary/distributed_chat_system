@@ -1,0 +1,11 @@
+# Node d: the 4th node used in the "join a running cluster" demo step (run on Laptop 2).
+# It has NO bootstrap_voters: it contacts a seed, joins as a learner, catches up, is promoted.
+node_id = "node-d"
+host = "0.0.0.0"
+tcp_port = 9004
+ws_port = 8004
+advertise_addr = "127.0.0.1:9004"
+db_path = "data/node-d.db"
+heartbeat_ms = 500
+election_timeout_ms = [1500, 3000]
+seeds = ["127.0.0.1:9001", "127.0.0.1:9002", "127.0.0.1:9003"]
